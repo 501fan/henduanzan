@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="baidu-site-verification" content="code-WvEqUDXUIF">
+    <title>今天</title>
+    <!-- 站点图标:电脑浏览器标签页用 favicon,苹果手机加书签/加到主屏用 apple-touch-icon -->
+    <link rel="icon" type="image/png" href="gao.JPG">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <!-- 手机微信/QQ 打开或转发时展示的标题、描述和缩略图 -->
+    <meta name="description" content="沉浸式音乐小站:梦中蝶影、唯一、全世界宣布爱你、你走以后、season3 paradiselost,带滚动歌词和留言板。">
+    <meta property="og:title" content="沉浸式不动先读看点电视">
+    <meta property="og:description" content="沉浸式音乐小站,带滚动歌词和留言板。">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="logo.png">
+    <meta itemprop="image" content="logo.png">
+    <link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
+    <style>
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100%;
+            background: #000;
+            color: #f5f1f1;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        /* 粒子层固定铺满,浮在所有内容之上,但不拦截点击 */
+        #bgcanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* 主体内容纵向排列,随内容自然增高 */
+        .page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            width: min(90%, 720px);
+            margin: 0 auto;
+            padding: 24px 0 60px;
+        }
+
+        .nav {
+            width: 100%;
+            padding: 8px;
+            border: solid 1px #f5f1f1;
+            text-align: center;
+            font-size: 1.8em;
+        }
+
+        .nav a {
+            color: #846510;
+            text-decoration: underline;
+        }
+
+        .banner {
+            width: min(100%, 320px);
+            padding: 8px;
+            border: solid 1px #f5f1f1;
+            background-color: #43472057;
+            text-align: center;
+            opacity: 0.89;
+        }
+
+        .banner img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .interact {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            color: #e524b3;
+            text-align: center;
+        }
+
+        .interact audio {
+            width: min(100%, 320px);
+        }
+
+        /* 当前曲目栏:歌名居中,两侧是上一曲、下一曲按钮 */
+        .now-playing {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: min(100%, 320px);
+        }
+
+        .track-name {
+            flex: 1;
+            min-width: 0;
+            color: #e524b3;
+            font-size: 0.95em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .switch {
+            flex: none;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: 1px solid #e524b3;
+            border-radius: 50%;
+            background: transparent;
+            color: #e524b3;
+            font-size: 1.4em;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .switch:hover {
+            background: #e524b3;
+            color: #000;
+        }
+
+        /* 歌词:固定高度的滚动区,可手动上下滑动翻看;播放时当前句自动滚到正中并高亮,上下两端淡出 */
+        .lyrics {
+            position: relative;
+            width: min(100%, 480px);
+            height: 12em;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-width: none;            /* 隐藏滚动条,靠滑动翻看 */
+            line-height: 2;
+            -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+            mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+        }
+
+        .lyrics::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* 上下各留半个框的空白,让第一句和最后一句也能滚到正中 */
+        .lyrics ul {
+            margin: 0;
+            padding: 5em 0;
+            list-style: none;
+        }
+
+        .lyrics li {
+            color: rgba(245, 241, 241, 0.45);
+            transition: color 0.3s, font-size 0.3s;
+        }
+
+        .lyrics li.active {
+            color: #e524b3;
+            font-size: 1.15em;
+        }
+
+        /* 歌词没有时间标签时整篇静态显示 */
+        .lyrics.static {
+            height: auto;
+            overflow: visible;
+            -webkit-mask-image: none;
+            mask-image: none;
+        }
+
+        .lyrics.static ul {
+            padding: 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .lyrics li { transition: none; }
+        }
+
+        /* 文章正文:左对齐、加大行距,方便阅读长段落 */
+        .article {
+            width: 100%;
+            text-align: left;
+            line-height: 1.8;
+            font-size: 1.05em;
+            color: #f5f1f1;
+        }
+
+        .article p {
+            margin: 0 0 1em;
+        }
+
+        /* 嵌入的外部网页:高度由脚本按内容自动设置,这里的高度只是加载前和加载失败时的兜底值 */
+        .embed {
+            display: block;
+            width: 100%;
+            height: 800px;
+            border: 0;
+            border-radius: 12px;
+            background: #f6f5ef;
+        }
+
+        /* 评论区:白色半透明底,保证 Waline 自带样式可读 */
+        .comments {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.92);
+            color: #333;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .comments {
+                background: rgba(30, 30, 30, 0.92);
+                color: #ddd;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="bgcanvas"></canvas>
+
+    <main class="page">
+        <p class="nav">
+            <a href="https://yzyys.gitee.io/reai/20221023wenzhangshouye/daohang.html" target="_blank" title="导航">下一页</a>
+        </p>
+
+        <p class="banner">
+            <img src="gao.JPG" alt="" width="213" height="150">
+        </p>
+
+        <div class="interact" id="wordText">
+            <div class="article">
+                <!-- 每一段文字用一对 <p></p> 包起来，要几段就加几对 -->
+                <p>互动，，</p>
+                <!-- 嵌入外部网页:鹈鹕骑车动画,地址在页面底部的脚本里 -->
+                <iframe id="pelicanFrame" class="embed" title="海风正好，慢慢骑 · 鹈鹕骑车动画"></iframe>
+            </div>
+            <img src="https://gitee.com/huajiaojiang/reai/raw/master/image/icotubiaologo/xiani.gif" width="100" height="auto" alt="">
+            <!-- 播放器:曲目来自下面的 script.track 列表,播完自动下一首,列表循环 -->
+            <audio id="song" controls autoplay></audio>
+            <!-- 当前曲目:中间显示歌名和歌手,两侧按钮切换上一曲、下一曲 -->
+            <div class="now-playing">
+                <button type="button" class="switch" id="prevBtn" title="上一曲" aria-label="上一曲">‹</button>
+                <span class="track-name" id="trackName"></span>
+                <button type="button" class="switch" id="nextBtn" title="下一曲" aria-label="下一曲">›</button>
+            </div>
+            <!-- 歌词显示区:内容由当前曲目的歌词自动生成,不用手动填 -->
+            <div class="lyrics" id="lyrics" hidden></div>
+            <!--
+                每首歌一对 <script class="track" type="text/lrc"> 标签,顺序就是播放顺序:
+                  data-title  歌名        data-artist 歌手
+                  data-src    音频地址    data-src-backup 备用地址(可省略,主地址加载失败时才用)
+                标签之间写 LRC 歌词:每行开头的 [分:秒.毫秒] 是这句开始唱的时刻,[ti:] [ar:] 这类标签会被忽略。
+                歌词没有时间标签时整篇静态显示;纯音乐留空即可,歌词区会自动隐藏。
+                要加新歌,把音频放到根目录,再照样复制一段 script 标签即可。
+            -->
+            <!-- 置顶新歌:《梦中蝶影》暂时没有歌词文件,留空则播放时歌词区自动隐藏 -->
+            <script class="track" type="text/lrc" data-title="梦中蝶影" data-src="梦中蝶影.mp3"></script>
+            <script class="track" type="text/lrc" data-title="唯一" data-artist="告五人"
+                    data-src="weiyi.m4a" data-src-backup="https://huajiaojiang.gitee.io/reai/20221023wenzhangshouye/weiyi.m4a">
+                [ti:唯一]
+                [ar:告五人]
+                [00:00.000]作词 : 潘云安
+                [00:01.000]作曲 : 潘云安
+                [00:02.000]编曲 : 告五人
+                [00:03.000]制作人 : 陈君豪/韩立康/黄文萱 Ziya Huang
+                [00:29.299]你真的懂唯一 的定义 并不简单如呼吸
+                [00:42.732]你真的希望你能厘清 若没交心怎么说明
+                [00:54.732]我真的爱你
+                [01:01.731]句句不轻易
+                [01:08.634]眼神中飘移
+                [01:14.566]总是在关键时刻清楚洞悉
+                [01:22.314]你的不坚定
+                [01:28.299]配合我颠沛流离
+                [01:35.900]死去中清醒
+                [01:41.932]明白你背着我聪明
+                [02:08.650]你真的懂唯一的定义 不只是如影随形
+                [02:22.151]你真的希望你能厘清 闭上眼睛 用心看清
+                [02:33.949]我真的爱你
+                [02:41.014]没人能比拟
+                [02:47.916]眼神没肯定
+                [02:53.782]总是在关键时刻清楚洞悉
+                [03:01.498]你的不坚定
+                [03:07.400]配合我颠沛流离
+                [03:15.165]死去中清醒
+                [03:21.098]明白你背着我聪明
+                [03:28.866]爱本质无异 是因为人多得拥挤
+                [03:42.431]你不想证明 证明我是你唯一 证明我是你唯一
+            </script>
+            <script class="track" type="text/lrc" data-title="全世界宣布爱你" data-artist="听风问心" data-src="binma.mp3">
+                [00:31.62]有你的地方就格外的清新
+                [00:39.51]想着你我的嘴角都会扬起
+                [00:43.89]倾城的轮廓 沾满我的憧憬
+                [00:48.60]天空都变透明 听到你的亲口允许
+                [00:54.90]对全世界宣布爱你
+                [00:59.22]我只想和你在一起
+                [01:03.51]这颗心 没畏惧 太坚定
+                [01:07.92]庆幸让我能够遇见你
+                [01:12.30]就算全世界都否定
+                [01:16.68]我也要跟你在一起
+                [01:21.00]想牵手 想拥抱 想爱你
+                [01:25.44]天崩地裂也要在一起
+                [01:28.53]在躲过雨的香樟树下等你
+                [01:29.22]在天桥上的转角擦肩而遇
+                [01:30.00]制造每个邂逅的缘分累积
+                [01:32.88]终于可以牵你的手保护你
+                [01:38.70]有你的地方就格外的清新
+                [01:42.75]想着你我的嘴角都会扬起
+                [01:47.13]倾城的轮廓 沾满我的憧憬
+                [01:51.90]天空都变透明 听到你的亲口允许
+                [01:58.11]对全世界宣布爱你
+                [02:54.90]我只想和你在一起
+                [02:59.19]这颗心 没畏惧 太坚定
+                [03:03.54]庆幸让我能够遇见你
+                [03:07.95]就算全世界都否定
+                [03:12.39]我也要跟你在一起
+                [03:16.59]想牵手 想拥抱 想爱你
+                [03:21.03]天崩地裂也要在一起
+            </script>
+            <script class="track" type="text/lrc" data-title="你走以后" data-artist="王恩信Est / 二胖u（王訫）" data-src="你走以后.mp3">
+                [00:00.000]作词 : 王恩信Est/二胖u（王訫）
+                [00:01.000]作曲 : 王恩信Est/二胖u（王訫）
+                [00:02.000]编曲 : 谭响TanX
+                [00:03.000]原曲 : SWINGS/俞胜恩 - Trap
+                [00:04.000]混音 : TanX
+                [00:13.593]王恩信Est：
+                [00:14.092]在每个失眠夜晚都会不由自主想起你
+                [00:16.844]我还想再见你一面可以再次抱你在怀里
+                [00:19.843]和我的每段回忆都在心里怎么忘记
+                [00:22.594]最难过的时候你都在身边劝我不要放弃
+                [00:25.593]现在只有一个人躺在空荡的房间里
+                [00:28.093]努力克制自己的身体 尽量不去想起你
+                [00:30.843]临走之前告诉我别只会活在过去
+                [00:33.593]像男人一样清楚自己要到达的目的地
+                [00:36.343]我记得你走那天下了一整天的雨
+                [00:38.843]回到家中麻木清洗被雨淋湿的身体
+                [00:41.843]无能为力的感情像匕首插进在心里
+                [00:44.593]最后戴上耳机播放曾为你写过的歌曲
+                [00:47.027]你过得还好吗 我总想象一系列的问题
+                [00:50.027]点上一根烟 和你有关的话题尽量不再提及
+                [00:52.777]从此独自一个人 抗拒和你周围人再联系
+                [00:56.277]漫无目的用酒精麻痹自己假装忘记
+                [00:58.777]二胖u：
+                [00:59.776]如果季节更替 树叶落地银色满际
+                [01:04.275]没能走回原地我再做个梦给你
+                [01:10.024]梦见我们相遇 没有话题满眼笑意
+                [01:15.524]真的再见到你 再次拥抱你在怀里
+                [01:31.777]王恩信Est：
+                [01:32.027]不知道从什么时候开始
+                [01:33.193]我们之间存在各种问题
+                [01:35.193]不再打电话一起出门牵手你都在抗拒
+                [01:38.193]从每天空闲都在聊天到现在的三言两语
+                [01:40.943]从无话不谈到现在根本不知道从何说起
+                [01:43.693]我们都变得越来越暴躁开始不停的争吵
+                [01:46.122]寻找各种各样的借口见面的次数越来越少
+                [01:49.122]从深夜送你回家到不停看这手表
+                [01:51.556]变成现在的样子其实很早以前就有预兆
+                [01:54.556]我总是在想会不会开口这段关系停止
+                [01:57.056]是否我们的感情也会成为生命中的历史
+                [02:00.052]如果有可能多想回到最初重新开始
+                [02:02.805]让时间永远停留在最好的那段时光静止
+                [02:05.805]好吧现在的我已经开始习惯没有你的生活
+                [02:08.556]哪怕偶尔再次想起只当那段感情经过
+                [02:11.556]不再打听你的消息 都是朋友嘴里听说
+                [02:14.057]就算听到你有新的开始心里难免难过
+                [02:16.556]二胖u：
+                [02:17.056]如果季节更替 树叶落地银色满际
+                [02:22.556]没能走回原地我再做个梦给你
+                [02:28.306]梦见我们相遇 没有话题满眼笑意
+                [02:33.807]真的再见到你 再次拥抱你在怀里
+                [02:49.984]王恩信Est：
+                [02:50.236]直到现在都还保着你留下的习惯
+                [02:52.984]每次和你一起出门花费从来都不计算
+                [02:55.734]送你所有贵的礼物 只要是你喜欢
+                [02:58.734]不想让我们之间存在任何遗憾
+                [03:01.483]你送我所有的东西都放在了柜子下面
+                [03:04.233]包括过生日那年亲手送我的那条项链
+                [03:06.983]无数次睡醒脑海都是你离开的画面
+                [03:09.736]既然都过去只能心里对你说声再见
+                [03:14.486]say goodbye
+                [03:15.169]二胖u：
+                [03:15.917]如果季节更替 树叶落地银色满际
+                [03:21.167]没能走回原地我再做个梦给你
+                [03:26.667]梦见我们相遇 没有话题满眼笑意
+                [03:32.417]真的再见到你 再次拥抱你在怀里
+            </script>
+            <!-- 纯音乐,没有歌词,播放时歌词区自动隐藏 -->
+            <script class="track" type="text/lrc" data-title="season3 paradiselost" data-artist="游戏原声" data-src="season3paradiselost.mp3"></script>
+        </div>
+
+        <div id="vcomments" class="comments"></div>
+    </main>
+
+    <script type="module">
+        import { init } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
+
+        init({
+            el: '#vcomments',
+            serverURL: 'https://waline-render-4h1r.onrender.com',
+            path: location.pathname,
+            lang: 'zh-CN',
+            dark: 'auto',
+            placeholder: '欢迎留言'
+        });
+    </script>
+
+    <script>
+        var canvas = document.getElementById("bgcanvas"),
+            ctx = canvas.getContext("2d"),
+            w = canvas.width = window.innerWidth,
+            h = canvas.height = window.innerHeight,
+            particles = [],
+            pos = { x: w / 2, y: h / 2 };
+
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function Particle() {
+            this.x = pos.x;
+            this.y = pos.y;
+            this.r = 0.03;
+            this.color = "#" + ((Math.random() * 0xffffff) | 0).toString(16).padStart(6, "0");
+            this.vx = random(-5, 5);
+            this.vy = random(-3, 3);
+        }
+
+        Particle.prototype.update = function () {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.r += 0.02;
+        };
+
+        Particle.prototype.draw = function () {
+            ctx.beginPath();
+            ctx.fillStyle = this.color;
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+        };
+
+        function spawn() {
+            particles.push(new Particle());
+        }
+
+        function render() {
+            // 用 destination-out 让上一帧逐渐变透明,形成拖尾但不遮挡下方内容
+            ctx.globalCompositeOperation = "destination-out";
+            ctx.fillStyle = "rgba(0,0,0,.5)";
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = "source-over";
+            for (var i = particles.length - 1; i >= 0; i--) {
+                var p = particles[i];
+                p.draw();
+                p.update();
+                if (p.r > 5) particles.splice(i, 1);
+            }
+        }
+
+        (function loop() {
+            spawn();
+            render();
+            requestAnimationFrame(loop);
+        })();
+
+        window.addEventListener('resize', function () {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            pos.x = w / 2;
+            pos.y = h / 2;
+        });
+    </script>
+
+    <script>
+        // 把外部网页整页抓取后放进 iframe,并让 iframe 高度跟随内容变化,避免出现内部滚动条
+        (function () {
+            var url = 'https://unpkg.com/@eric501/pelican-bicycle@1.0.0/pelican-bicycle-20260905-jintao.html';
+            var frame = document.getElementById('pelicanFrame');
+
+            function fit() {
+                var doc = frame.contentDocument;
+                if (!doc || !doc.documentElement) return;
+                frame.style.height = Math.ceil(doc.documentElement.getBoundingClientRect().height) + 'px';
+            }
+
+            fetch(url)
+                .then(function (res) { return res.ok ? res.text() : Promise.reject(res.status); })
+                .then(function (html) {
+                    frame.addEventListener('load', function () {
+                        fit();
+                        var win = frame.contentWindow;
+                        if (win && win.ResizeObserver) {
+                            new win.ResizeObserver(fit).observe(frame.contentDocument.documentElement);
+                        } else {
+                            window.addEventListener('resize', fit);
+                        }
+                    }, { once: true });
+                    // 加上 base,保证外部网页里的相对链接仍指向原站
+                    frame.srcdoc = html.replace(/<head>/i, '<head><base href="' + url + '">');
+                })
+                .catch(function () {
+                    // 抓取失败时退回为直接加载原地址,高度使用样式里的固定值
+                    frame.src = url;
+                });
+        })();
+    </script>
+
+    <script>
+        // 播放器:读取 script.track 生成播放列表,切歌时重新解析歌词,随音频进度高亮并滚动到当前句
+        (function () {
+            var audio = document.getElementById('song');
+            var box = document.getElementById('lyrics');
+            var name = document.getElementById('trackName');
+            var prev = document.getElementById('prevBtn');
+            var next = document.getElementById('nextBtn');
+            if (!audio || !box || !name || !prev || !next) return;
+
+            // 从 script.track 标签收集曲目,顺序即播放顺序
+            var tracks = [].map.call(document.querySelectorAll('script.track'), function (s) {
+                var sources = [s.getAttribute('data-src')];
+                if (s.getAttribute('data-src-backup')) sources.push(s.getAttribute('data-src-backup'));
+                return {
+                    title: s.getAttribute('data-title') || '未命名',
+                    artist: s.getAttribute('data-artist') || '',
+                    sources: sources,
+                    lrc: s.textContent
+                };
+            });
+            if (!tracks.length) return;
+
+            /* ---------- 歌词 ---------- */
+            var offset = 0;      // 来自 [offset:毫秒] 标签,正数表示歌词整体提前
+            var timed = [];      // 当前曲目带时间的句子 { time: 秒, text }
+            var list = null;     // 当前歌词 <ul>,没有可滚动歌词时为 null
+            var line = -1;       // 当前高亮的句子下标
+
+            function parse(text) {
+                var result = { offset: 0, timed: [], plain: [] };
+                text.split(/\r?\n/).forEach(function (raw) {
+                    var s = raw.trim();
+                    if (!s) return;
+                    var tagOffset = s.match(/^\[offset:\s*([+-]?\d+)\s*\]$/i);
+                    if (tagOffset) { result.offset = Number(tagOffset[1]) / 1000; return; }
+                    var times = [], re = /\[(\d+):(\d+(?:\.\d+)?)\]/g, m;
+                    while ((m = re.exec(s))) times.push(Number(m[1]) * 60 + Number(m[2]));
+                    var content = s.replace(/\[[^\]]*\]/g, '').trim();
+                    if (times.length) {
+                        times.forEach(function (time) { result.timed.push({ time: time, text: content }); });
+                    } else if (content) {
+                        result.plain.push({ text: content });
+                    }
+                });
+                result.timed.sort(function (a, b) { return a.time - b.time; });
+                return result;
+            }
+
+            function loadLyrics(text) {
+                box.innerHTML = '';
+                box.hidden = true;
+                box.classList.remove('static');
+                list = null; timed = []; line = -1; offset = 0;
+
+                var parsed = parse(text);
+                var items = parsed.timed.length ? parsed.timed : parsed.plain;
+                if (!items.length) return;   // 纯音乐:保持隐藏
+
+                var ul = document.createElement('ul');
+                items.forEach(function (item) {
+                    var li = document.createElement('li');
+                    li.textContent = item.text || '♪';   // 空句(间奏)显示音符
+                    ul.appendChild(li);
+                });
+                box.appendChild(ul);
+                box.hidden = false;
+                if (!parsed.timed.length) { box.classList.add('static'); return; }
+
+                timed = parsed.timed;
+                offset = parsed.offset;
+                list = ul;
+                stopBrowsing();
+                show(-1, true);   // 切歌后直接定位,不做滚动动画
+            }
+
+            var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+            // 把当前句(开唱前是第一句)滚到歌词框正中
+            function center(instant) {
+                if (!list) return;
+                var li = list.children[Math.max(line, 0)];
+                var top = li.offsetTop + li.offsetHeight / 2 - box.clientHeight / 2;
+                box.scrollTo({ top: Math.round(top), behavior: instant || reduceMotion ? 'auto' : 'smooth' });
+            }
+
+            function show(index, instant) {
+                if (!list) return;
+                if (line >= 0) list.children[line].classList.remove('active');
+                if (index >= 0) list.children[index].classList.add('active');
+                line = index;
+                if (!browsing) center(instant);   // 用户正在手动翻看时不打断
+            }
+
+            function sync() {
+                if (!list) return;
+                var t = audio.currentTime + offset, index = -1;
+                while (index + 1 < timed.length && timed[index + 1].time <= t) index++;
+                if (index !== line) show(index);
+            }
+
+            // 手动滑动歌词:暂停自动跟随,停止操作 3 秒后再滚回当前句
+            var browsing = false, browseTimer = null;
+            function startBrowsing() {
+                browsing = true;
+                clearTimeout(browseTimer);
+                browseTimer = setTimeout(function () {
+                    browsing = false;
+                    center();
+                }, 3000);
+            }
+            function stopBrowsing() {
+                browsing = false;
+                clearTimeout(browseTimer);
+                browseTimer = null;
+            }
+            ['wheel', 'touchstart', 'touchmove', 'pointerdown'].forEach(function (type) {
+                box.addEventListener(type, startBrowsing, { passive: true });
+            });
+
+            audio.addEventListener('timeupdate', sync);
+            audio.addEventListener('seeked', sync);
+            window.addEventListener('resize', function () { center(true); });
+
+            /* ---------- 切歌 ---------- */
+            var current = -1;     // 当前曲目下标
+            var sourceIndex = 0;  // 当前曲目正在使用第几个地址
+
+            function play(index) {
+                current = (index + tracks.length) % tracks.length;
+                sourceIndex = 0;
+                var track = tracks[current];
+                name.textContent = track.title + (track.artist ? ' · ' + track.artist : '');
+                loadLyrics(track.lrc);
+                audio.src = track.sources[0];
+                // 浏览器可能禁止自动播放,失败就等用户点播放按钮
+                audio.play().catch(function () {});
+            }
+
+            prev.addEventListener('click', function () { play(current - 1); });
+            next.addEventListener('click', function () { play(current + 1); });
+
+            // 主地址加载失败时换备用地址;都失败就跳到下一首
+            audio.addEventListener('error', function () {
+                var track = tracks[current];
+                if (!track) return;
+                if (++sourceIndex < track.sources.length) {
+                    audio.src = track.sources[sourceIndex];
+                    audio.play().catch(function () {});
+                } else {
+                    play(current + 1);
+                }
+            });
+
+            audio.addEventListener('ended', function () { play(current + 1); });
+
+            play(0);
+        })();
+    </script>
+
+    <script>
+        // 把评论区页脚 "Powered by Waline" 的链接和名字换成自己的
+        (function () {
+            var link = 'https://henduanzan-twikoo-d7gwh9lqi0cd62381.webapps.tcloudbase.com';   // 改成你的地址,目前先保留原地址
+            var name = 'jintao';
+            var box = document.getElementById('vcomments');
+
+            function patch() {
+                var a = box.querySelector('.wl-power a');
+                if (!a) return;
+                if (a.getAttribute('href') !== link) a.href = link;
+                // 只在不一样时才改,否则改动本身会再次触发观察器,陷入死循环
+                if (a.textContent !== name) a.textContent = name;
+            }
+
+            patch();
+            // Waline 加载评论时会拆掉再重建这行页脚,所以要持续观察,每次重建后再改一次
+            new MutationObserver(patch).observe(box, { childList: true, subtree: true });
+        })();
+    </script>
+</body>
+</html>

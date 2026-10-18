@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="baidu-site-verification" content="code-WvEqUDXUIF">
+    <title>沉浸式不动先读看点电视</title>
+    <link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
+    <style>
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100%;
+            background: #000;
+            color: #f5f1f1;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        /* 粒子层固定铺满,浮在所有内容之上,但不拦截点击 */
+        #bgcanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* 主体内容纵向排列,随内容自然增高 */
+        .page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            width: min(90%, 720px);
+            margin: 0 auto;
+            padding: 24px 0 60px;
+        }
+
+        .nav {
+            width: 100%;
+            padding: 8px;
+            border: solid 1px #f5f1f1;
+            text-align: center;
+            font-size: 1.8em;
+        }
+
+        .nav a {
+            color: #846510;
+            text-decoration: underline;
+        }
+
+        .banner {
+            width: min(100%, 320px);
+            padding: 8px;
+            border: solid 1px #f5f1f1;
+            background-color: #43472057;
+            text-align: center;
+            opacity: 0.89;
+        }
+
+        .banner img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .interact {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            color: #e524b3;
+            text-align: center;
+        }
+
+        .interact audio {
+            width: min(100%, 320px);
+        }
+
+        /* 评论区:白色半透明底,保证 Waline 自带样式可读 */
+        .comments {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.92);
+            color: #333;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .comments {
+                background: rgba(30, 30, 30, 0.92);
+                color: #ddd;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="bgcanvas"></canvas>
+
+    <main class="page">
+        <p class="nav">
+            <a href="https://yzyys.gitee.io/reai/20221023wenzhangshouye/daohang.html" target="_blank" title="导航">从这里导航</a>
+        </p>
+
+        <p class="banner">
+            <img src="binma.gif" alt="" width="213" height="150">
+        </p>
+
+        <div class="interact" id="wordText">
+            <span>互动</span>
+            <img src="https://gitee.com/yzyys/reai/raw/master/image/icotubiaologo/xiani.gif" width="100" height="auto" alt="">
+            <audio controls loop autoplay>
+                <source src="weiyi.m4a" type="audio/mp4">
+                <source src="https://yzyys.gitee.io/reai/20221023wenzhangshouye/weiyi.mp3" type="audio/mpeg">
+            </audio>
+        </div>
+
+        <div id="vcomments" class="comments"></div>
+    </main>
+
+    <script type="module">
+        import { init } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
+
+        init({
+            el: '#vcomments',
+            serverURL: 'https://waline-render-4h1r.onrender.com',
+            path: location.pathname,
+            lang: 'zh-CN',
+            dark: 'auto',
+            placeholder: '欢迎留言'
+        });
+    </script>
+
+    <script>
+        var canvas = document.getElementById("bgcanvas"),
+            ctx = canvas.getContext("2d"),
+            w = canvas.width = window.innerWidth,
+            h = canvas.height = window.innerHeight,
+            particles = [],
+            pos = { x: w / 2, y: h / 2 };
+
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function Particle() {
+            this.x = pos.x;
+            this.y = pos.y;
+            this.r = 0.03;
+            this.color = "#" + ((Math.random() * 0xffffff) | 0).toString(16).padStart(6, "0");
+            this.vx = random(-5, 5);
+            this.vy = random(-3, 3);
+        }
+
+        Particle.prototype.update = function () {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.r += 0.02;
+        };
+
+        Particle.prototype.draw = function () {
+            ctx.beginPath();
+            ctx.fillStyle = this.color;
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+        };
+
+        function spawn() {
+            particles.push(new Particle());
+        }
+
+        function render() {
+            // 用 destination-out 让上一帧逐渐变透明,形成拖尾但不遮挡下方内容
+            ctx.globalCompositeOperation = "destination-out";
+            ctx.fillStyle = "rgba(0,0,0,.5)";
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = "source-over";
+            for (var i = particles.length - 1; i >= 0; i--) {
+                var p = particles[i];
+                p.draw();
+                p.update();
+                if (p.r > 5) particles.splice(i, 1);
+            }
+        }
+
+        (function loop() {
+            spawn();
+            render();
+            requestAnimationFrame(loop);
+        })();
+
+        window.addEventListener('resize', function () {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            pos.x = w / 2;
+            pos.y = h / 2;
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "twikoo-d7gwh9lqi0cd62381",
+  "app": {
+    "serviceName": "henduanzan",
+    "framework": "other",
+    "installCommand": "",
+    "buildCommand": "",
+    "outputDir": "./",
+    "deployPath": "/henduanzan"
+  }
+}
