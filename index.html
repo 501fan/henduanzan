@@ -6,15 +6,16 @@
     <meta name="baidu-site-verification" content="code-WvEqUDXUIF">
     <title>今天</title>
     <!-- 站点图标:电脑浏览器标签页用 favicon,苹果手机加书签/加到主屏用 apple-touch-icon -->
-    <link rel="icon" type="image/png" href="gao.JPG">
+    <link rel="icon" type="image/png" href="favicon.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <!-- 手机微信/QQ 打开或转发时展示的标题、描述和缩略图 -->
+    <!-- 手机微信/QQ 打开或转发时展示的标题、描述和缩略图;缩略图必须用绝对地址才能被抓到 -->
     <meta name="description" content="沉浸式音乐小站:梦中蝶影、唯一、全世界宣布爱你、你走以后、season3 paradiselost,带滚动歌词和留言板。">
     <meta property="og:title" content="isjintao">
     <meta property="og:description" content="沉浸式音乐小站,带滚动歌词和留言板。">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="gao.JPG">
-    <meta itemprop="image" content="gao.JPG">
+    <meta property="og:url" content="https://501fan.github.io/henduanzan/">
+    <meta property="og:image" content="https://501fan.github.io/henduanzan/share-icon.png">
+    <meta itemprop="image" content="https://501fan.github.io/henduanzan/share-icon.png">
     <link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
     <style>
         * { box-sizing: border-box; }
@@ -221,6 +222,8 @@
 </head>
 
 <body>
+    <!-- 微信转发缩略图兜底:微信默认抓取页面第一张不小于 300px 的图片,这里隐藏放 logo -->
+    <img src="share-icon.png" alt="" width="512" height="512" style="position:absolute;left:-9999px;top:-9999px;">
     <canvas id="bgcanvas"></canvas>
 
     <main class="page">
